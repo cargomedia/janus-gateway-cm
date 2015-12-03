@@ -1459,16 +1459,19 @@ void cm_rtpbcast_incoming_rtcp(janus_plugin_session *handle, int video, char *bu
 
 			/* Check if we really need to switch */
 			if (src && src != sessid->source) {
+				sessid->paused = TRUE;
+
 				janus_mutex_lock(&sessid->source->mutex);
 				sessid->source->listeners = g_list_remove_all(sessid->source->listeners, sessid);
-				sessid->source = src;
 				janus_mutex_unlock(&sessid->source->mutex);
 
 				janus_mutex_lock(&src->mutex);
 				src->listeners = g_list_append(src->listeners, sessid);
 				janus_mutex_unlock(&src->mutex);
 
+				sessid->source = src;
 				sessid->last_switch = ml;
+				sessid->paused = FALSE;
 			}
 		}
 	}
