@@ -1452,6 +1452,8 @@ void cm_rtpbcast_incoming_rtcp(janus_plugin_session *handle, int video, char *bu
 			if (sessid->source->mp->sources == NULL)
 				return;
 
+			janus_mutex_lock(&mountpoints_mutex);
+
 			janus_mutex_lock(&sessid->source->mutex);
 			cm_rtpbcast_rtp_source *src =
 				cm_rtpbcast_pick_source(sessid->source->mp->sources, sessid->remb);
@@ -1473,6 +1475,8 @@ void cm_rtpbcast_incoming_rtcp(janus_plugin_session *handle, int video, char *bu
 				sessid->last_switch = ml;
 				sessid->paused = FALSE;
 			}
+
+			janus_mutex_unlock(&mountpoints_mutex);
 		}
 	}
 	/* FIXME Maybe we should care about RTCP, but not now */
