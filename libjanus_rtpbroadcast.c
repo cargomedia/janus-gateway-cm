@@ -404,6 +404,33 @@ typedef struct cm_rtpbcast_rtp_relay_packet {
 	uint16_t seq_number;
 } cm_rtpbcast_rtp_relay_packet;
 
+typedef struct cm_rtp_header
+{
+	uint16_t version:8;
+	uint16_t padding:8;
+	uint16_t seq_number1:8;
+	uint16_t seq_number2:8;
+	uint32_t timestamp1:8;
+	uint32_t timestamp2:8;
+	uint32_t timestamp3:8;
+	uint32_t timestamp4:8;
+	uint32_t ssrc1:8;
+	uint32_t ssrc2:8;
+	uint32_t ssrc3:8;
+	uint32_t ssrc4:8;
+	uint32_t byte0:8;
+	uint32_t byte1:8;
+	uint32_t byte2:8;
+	uint32_t byte3:8;
+	uint32_t magic0:8;
+	uint32_t magic1:8;
+	uint32_t magic2:8;
+	uint32_t width0:8;
+	uint32_t width1:8;
+	uint32_t height0:8;
+	uint32_t height1:8;
+	uint32_t csrc[4];
+} cm_rtp_header;
 
 /* Error codes */
 #define CM_RTPBCAST_ERROR_NO_MESSAGE			450
@@ -2096,6 +2123,17 @@ static void *cm_rtpbcast_relay_thread(void *data) {
 	memset(buffer, 0, 1500);
 	cm_rtpbcast_rtp_relay_packet packet;
 
+	int keyframe = 0;
+	int showframe = 0;
+	int version = 0;
+	int header_size = 0;
+	int frame_width = 0;
+	int frame_height = 0;
+	int frame_x_scale = 0;
+	int frame_y_scale = 0;
+	int frame_mbw = 0;
+	int frame_mbh = 0;
+
 	while(!g_atomic_int_get(&stopping) && !mountpoint->destroyed) {
 		/* Wait for some data */
 		for (j = AUDIO; j <= VIDEO; j++) {
@@ -2150,6 +2188,45 @@ static void *cm_rtpbcast_relay_thread(void *data) {
 				rtp_header *rtp = (rtp_header *)buffer;
 				//~ JANUS_LOG(LOG_VERB, " ... parsed RTP packet (ssrc=%u, pt=%u, seq=%u, ts=%u)...\n",
 					//~ ntohl(rtp->ssrc), rtp->type, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
+
+				if (j == VIDEO) {
+					cm_rtp_header *rtp1 = (cm_rtp_header *)buffer;
+
+					keyframe = ((rtp1->byte0 & 0x01) == 0);
+					version = (rtp1->byte0 >> 1) & 0x7;
+					showframe = (((rtp1->byte0 >> 4) & 0x01) == 1);
+
+					if (keyframe == 1) {
+						/* keyframe, version and show_frame use 5 bits */
+						header_size = (rtp1->byte2 << 11) | (rtp1->byte1 << 3) | (rtp1->byte0 >> 5);
+
+						/* Include the uncompressed data blob in the header */
+						header_size += keyframe ? 10 : 3;
+
+						if (rtp1->magic0 != 0x9d || rtp1->magic1 != 0x01 || rtp1->magic2 != 0x2a) {
+							/* JANUS_LOG(LOG_WARN, "vp8: invalid format\n"); */
+						} else {
+							frame_width = (int)(rtp1->width1&0x3f)<<8 | (int)(rtp1->width0);
+							frame_height = (int)(rtp1->height1&0x3f)<<8 | (int)(rtp1->height0);
+							frame_x_scale = rtp1->width1 >> 6;
+							frame_y_scale = rtp1->height1 >> 6;
+							frame_mbw = (frame_width + 0x0f) >> 4;
+							frame_mbh = (frame_height + 0x0f) >> 4;
+
+							JANUS_LOG(LOG_INFO, "KEY FRAME\n");
+							JANUS_LOG(LOG_INFO, "ssrc: %u\n", ntohl(rtp->ssrc));
+							JANUS_LOG(LOG_INFO, "version: %u\n", version);
+							JANUS_LOG(LOG_INFO, "show-frame: %u\n", showframe);
+							JANUS_LOG(LOG_INFO, "frame_width: %u\n", frame_width);
+							JANUS_LOG(LOG_INFO, "frame_height: %u\n", frame_height);
+							JANUS_LOG(LOG_INFO, "frame_x_scale: %u\n", frame_x_scale);
+							JANUS_LOG(LOG_INFO, "frame_y_scale: %u\n", frame_y_scale);
+							JANUS_LOG(LOG_INFO, "frame_mbw: %u\n", frame_mbw);
+							JANUS_LOG(LOG_INFO, "frame_mbh: %u\n", frame_mbh);
+						}
+					}
+				}
+
 				/* Relay on all sessions */
 				packet.data = rtp;
 				packet.length = bytes;
