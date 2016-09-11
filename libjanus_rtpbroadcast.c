@@ -1033,27 +1033,12 @@ void cm_rtpbcast_destroy_session(janus_plugin_session *handle, int *error) {
 		*error = -1;
 		return;
 	}
-
-	if(!handle) {
-		JANUS_LOG(LOG_ERR, "No handle associated with janus plugin session...\n");
-		*error = -2;
-		return;
-	}
-
-	if(!handle->plugin_handle) {
-		JANUS_LOG(LOG_ERR, "No plugin handle associated with janus plugin session/handle...\n");
-		*error = -2;
-		return;
-	}
-
 	cm_rtpbcast_session *session = (cm_rtpbcast_session *)handle->plugin_handle;
 	if(!session) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		*error = -2;
 		return;
 	}
-	janus_mutex_lock(&session->mutex);
-	session->stopping = TRUE;
 	JANUS_LOG(LOG_VERB, "Removing CM RTP Broadcast session...\n");
 	/* If session is watching something, remove it from listeners */
 	/* TODO: abstract "attach to source" and "remove from source" with a special func
@@ -1063,23 +1048,15 @@ void cm_rtpbcast_destroy_session(janus_plugin_session *handle, int *error) {
 		session->source->listeners = g_list_remove_all(session->source->listeners, session);
 		janus_mutex_unlock(&session->source->mutex);
 	}
-	if(session->nextsource) {
-		janus_mutex_lock(&session->nextsource->mutex);
-		session->nextsource->waiters = g_list_remove_all(session->nextsource->waiters, session);
-		janus_mutex_unlock(&session->nextsource->mutex);
-	}
-	session->source = NULL;
-	session->nextsource = NULL;
 	/* If the session is relaying UDP, also remove listeners from all the sources */
 	cm_rtpbcast_stop_udp_relays(session, NULL);
+
 	/* If this is a streamer session, kill the stream */
 	if(session->mps)
 		g_list_foreach(session->mps, cm_rtpbcast_mountpoint_destroy, NULL);
 	session->mps = NULL;
-	janus_mutex_unlock(&session->mutex);
+
 	janus_mutex_lock(&sessions_mutex);
-	janus_mutex_lock(&old_sessions_mutex);
-	janus_mutex_lock(&super_sessions_mutex);
 	if(!session->destroyed) {
 		session->destroyed = janus_get_monotonic_time();
 		g_hash_table_remove(sessions, handle);
@@ -1087,10 +1064,7 @@ void cm_rtpbcast_destroy_session(janus_plugin_session *handle, int *error) {
 		/* Cleaning up and removing the session is done in a lazy way */
 		old_sessions = g_list_append(old_sessions, session);
 	}
-	janus_mutex_unlock(&super_sessions_mutex);
-	janus_mutex_unlock(&old_sessions_mutex);
 	janus_mutex_unlock(&sessions_mutex);
-	janus_mutex_unlock(&session->mutex);
 	return;
 }
 
