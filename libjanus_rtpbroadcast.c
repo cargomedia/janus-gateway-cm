@@ -1048,6 +1048,11 @@ void cm_rtpbcast_destroy_session(janus_plugin_session *handle, int *error) {
 		session->source->listeners = g_list_remove_all(session->source->listeners, session);
 		janus_mutex_unlock(&session->source->mutex);
 	}
+	if(session->nextsource) {
+		janus_mutex_lock(&session->nextsource->mutex);
+		session->nextsource->waiters = g_list_remove_all(session->nextsource->waiters, session);
+		janus_mutex_unlock(&session->nextsource->mutex);
+	}
 	/* If the session is relaying UDP, also remove listeners from all the sources */
 	cm_rtpbcast_stop_udp_relays(session, NULL);
 
